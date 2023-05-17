@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <style>
+        :root {
+            --topbar-size: 30px
+        }
+
+        body {
+            background-color: rgb(30, 35, 44);
+            margin: 0;
+            overflow: hidden;
+
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            -khtml-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+        }
+
+        #topbar {
+            box-sizing: border-box;
+            width: 100%;
+            height: var(--topbar-size);
+
+            background-color: rgb(10, 50, 100);
+        }
+
+        #title {
+            white-space: nowrap;
+            position: absolute;
+            right: 10px;
+            top: 0px;
+            height: var(--topbar-size);
+            font-size: 15px;
+            text-align: right;
+            padding: calc(var(--topbar-size) / 2 - 15px/2) 0;
+            color: rgb(10, 10, 30);
+
+            transition: opacity 0.25s;
+
+            pointer-events: none;
+
+            font-family: "Cascadia Code", "Consolas", "Courier New", sans-serif;
+        }
+
+        #info {
+            position: absolute;
+            font-family: -apple-system, BlinkMacSystemFont, avenir next, avenir, segoe ui, helvetica neue, helvetica, Cantarell, Ubuntu, roboto, noto, arial, sans-serif;
+
+            bottom: 10px;
+            right: 10px;
+
+            text-align: right;
+
+            font-size: 15px;
+            color: rgba(255, 255, 255, 0.5);
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+        }
+
+        #viewport {
+            position: absolute;
+
+            top: var(--topbar-size);
+        }
+
+        #buttons {
+            width: fit-content;
+            height: var(--topbar-size);
+
+            box-sizing: border-box;
+            display: flex;
+
+            gap: 2.5px;
+
+            padding-left: 5px;
+            padding-right: 5px;
+            padding-top: 2.5px;
+            padding-bottom: 2.5px;
+        }
+
+        #warn {
+            z-index: 1;
+            position: absolute;
+
+            width: 100%;
+            height: 100%;
+
+            font-family: -apple-system, BlinkMacSystemFont, avenir next, avenir, segoe ui, helvetica neue, helvetica, Cantarell, Ubuntu, roboto, noto, arial, sans-serif;
+            color: white;
+
+            background-color: black;
+
+            opacity: 0;
+
+            transition: opacity 0.25s;
+        }
+
+        #warn>text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        .gap {
+            width: 2.5px;
+        }
+
+        button {
+            white-space: nowrap;
+            background-color: rgb(10, 60, 150);
+            border: solid 1px rgb(10, 30, 10);
+            color: rgb(10, 30, 10);
+            border-radius: 5px;
+            font-family: "Cascadia Code", "Consolas", "Courier New", sans-serif;
+
+            transition: background-color 0.1s;
+
+            padding: 5px;
+        }
+
+        button:hover {
+            background-color: rgb(10, 80, 180);
+        }
+
+        button:hover:active {
+            background-color: rgb(10, 50, 130);
+        }
+
+        button:active {
+            background-color: rgb(130, 20, 50);
+        }
+    </style>
+</head>
+
+<body>
+    <div id="warn">
+        <text>Could you make your screen a bit bigger please?</text>
+    </div>
+    <div id="topbar">
+        <text id="title">Som A* Pathfinding</text>
+        <div id="buttons">
+            <button id="str" onclick="pathfinding()">Start!</button>
+            <div class="gap"></div>
+            <button id="clr" onclick="obstacles = []; path = []; render(); updateInfoStatus()">Clear Obstacles</button>
+            <div class="gap"></div>
+            <button id="git">GitHub</button>
+            <button id="inf">Info</button>
+            <div class="gap"></div>
+        </div>
+    </div>
+    <canvas id="viewport"></canvas>
+    <text id="info">Placing obstacles<br>AlaTomKing, 2023</text>
+
+    <!--
+        FIRST SCRIPT
+
+        PATHFINDING
+    -->
+    <script>
+        let running = false
+
+        let startTileX = 5
+        let startTileY = 10
+
+        let endTileX = 20
+        let endTileY = 10
+
+        let obstacles = []
+        let otherGrids = []
+        let path = []
+
+        let convertTo1D = (x, y) => (x + y * 120)
+
+        let node = (x, y, gCost, parent) => [
+            convertTo1D(x, y), // Distance
+            Math.abs(endTileX - x) + Math.abs(endTileY - y), // H Cost (Manhattan distance)
+            gCost, // G Cost
+            parent // Parent
+        ]
+
+        let nodeOneD = (x, gCost, parent) => [
+            x, // Distance
+            Math.abs(endTileX - x % 120) + Math.abs(endTileY - Math.floor(x / 120)), // H Cost (Manhattan distance)
+            gCost, // G Cost
+            parent // Parent
+        ]
+
+        let isValid = (x, x1, y) => {
+            let X = (x % 120) + x1
+            let Y = Math.floor(x / 120) + y
+
+            return (X >= 0 && X < 120 && Y >= 0 && Y < 120) && (binarySearchObstacle(convertTo1D(X, Y)) == -1) ? convertTo1D(X, Y) : false
+        }
+
+        let getThemNeighbours = (parentNode) => {
+            let neighbours = []
+
+            // Vertical / Horizontal
+
+            let left = isValid(parentNode[0], -1, 0)
+            let right = isValid(parentNode[0], 1, 0)
+            let up = isValid(parentNode[0], 0, -1)
+            let down = isValid(parentNode[0], 0, 1)
+
+            // Diagonal
+
+            let upLeft = up && left ? isValid(parentNode[0], -1, -1) : false
+            let upRight = up && right ? isValid(parentNode[0], 1, -1) : false
+            let downLeft = down && left ? isValid(parentNode[0], -1, 1) : false
+            let downRight = down && right ? isValid(parentNode[0], 1, 1) : false
+
+            if (left) {
+                neighbours.push(nodeOneD(left, parentNode[2] + 1, parentNode))
+            }
+            if (right) {
+                neighbours.push(nodeOneD(right, parentNode[2] + 1, parentNode))
+            }
+            if (up) {
+                neighbours.push(nodeOneD(up, parentNode[2] + 1, parentNode))
+            }
+            if (down) {
+                neighbours.push(nodeOneD(down, parentNode[2] + 1, parentNode))
+            }
+
+            if (upLeft) {
+                neighbours.push(nodeOneD(upLeft, parentNode[2] + 2, parentNode))
+            }
+            if (upRight) {
+                neighbours.push(nodeOneD(upRight, parentNode[2] + 2, parentNode))
+            }
+            if (downLeft) {
+                neighbours.push(nodeOneD(downLeft, parentNode[2] + 2, parentNode))
+            }
+            if (downRight) {
+                neighbours.push(nodeOneD(downRight, parentNode[2] + 2, parentNode))
+            }
+
+            return neighbours
+        }
+
+        let pathfinding = () => {
+            running = true
+            updateInfoStatus()
+
+            path = []
+            otherGrids = []
+
+            let open = []
+            let closed = []
+
+            let found = false
+
+            let startNode = node(startTileX, startTileY, 0, null)
+            open.push(startNode)
+
+            let current
+
+            while (open.length > 0) {
+                let low
+                let idx
+
+                let listsToCheck = []
+
+                for (i = 0; i < open.length; i++) {
+                    if (!low || (open[i][1] + open[i][2] < low)) {
+                        low = open[i][1] + open[i][2]
+                        idx = i
+                    }
+                    if (open[i][1] + open[i][2] == low) {
+                        listsToCheck.push[open[i]]
+                    }
+                }
+
+                let low1
+                for (i = 0; i < listsToCheck.length; i++) {
+                    if (listsToCheck[i][1] < low1) {
+                        low1 = listsToCheck[i][1]
+                        idx = i
+                    }
+                }
+
+                current = open[idx]
+                open.splice(idx, 1)
+                closed.push(current)
+
+                if (current[0] == convertTo1D(endTileX, endTileY)) {
+                    found = true
+                    break
+                }
+
+                let neighbours = getThemNeighbours(current)
+
+                neighbours.forEach(neighbour => {
+                    /*let add = true
+                    for (let i = 0; i < otherGrids.length; i++) {
+                        if (otherGrids[i] == neighbour[0]) {
+                            add = false
+                            break
+                        }
+                    }
+
+                    if (add) otherGrids.push(neighbour[0])*/
+
+                    let next = false
+                    for (let i1 = 0; i1 < closed.length; i1++) {
+                        if (closed[i1][0] == neighbour[0]) {
+                            next = true
+                            break
+                        }
+                    }
+
+                    if (!next) {
+                        let openFound = false
+                        for (let i1 = 0; i1 < open.length; i1++) {
+                            if (open[i1][0] == neighbour[0]) {
+                                openFound = true
+
+                                if (open[i1][2] > neighbour[2])
+                                    open[i1][2] = neighbour[2]
+
+                                break
+                            }
+                        }
+
+                        if (!openFound) {
+                            open.push(neighbour)
+                        }
+                    }
+                })
+            }
+
+            if (found) {
+                let currentNode = current
+
+                while (currentNode[3] != null) {
+                    path.push(currentNode[0])
+                    currentNode = currentNode[3]
+                }
+
+                path.push(startNode[0])
+            }
+
+            for (let i = 0; i < closed.length; i++) {
+                otherGrids.push(closed[0])
+            }
+
+            running = false
+            updateInfoStatus()
+        }
+    </script>
+
+    <!--
+        SECOND SCRIPT
+    
+        VISUALIZER / EDITOR
+    -->
+    <script>
+        let buttonList = document.getElementById("buttons")
+        let clrObstacles = document.getElementById("clr")
+        let download = document.getElementById("download")
+        let info = document.getElementById("info")
+        let text = document.getElementById("title")
+        let viewport = document.getElementById("viewport")
+        let warn = document.getElementById("warn")
+
+        let ctx = viewport.getContext("2d")
+
+        let btnLen = buttonList.offsetWidth
+
+        let style = getComputedStyle(document.body)
+
+        let viewX = 0
+        let viewY = 0
+
+        let gridSize = 20
+        let strokeSize = 1
+
+        let res = 1
+
+        let cursorGridX, cursorGridY
+        let cursorX, cursorY
+
+        let mouseEnter = false
+        let mouseDown = false
+
+        let holdMode = false
+        let removeMode = false
+
+        let dragStartTile = false
+        let dragEndTile = false
+
+        let topbarSizeStr = style.getPropertyValue("--topbar-size")
+        let topbarSize = Number(topbarSizeStr.replace("px", ""))
+
+        let binarySearchObstacle = (idx, alwaysReturnLow = false) => {
+            let low = 0
+            let high = obstacles.length - 1
+
+            let mid
+
+            while (low <= high) {
+                mid = Math.floor((low + high) / 2)
+                if (obstacles[mid] == idx)
+                    return mid
+                if (obstacles[mid] < idx)
+                    low = mid + 1
+                else
+                    high = mid - 1
+            }
+
+            if (alwaysReturnLow)
+                return low
+            else
+                return -1
+        }
+
+        let insertObstacle = (idx) => {
+            if (!running) {
+                let searched = binarySearchObstacle(idx, true)
+
+                if (obstacles[searched] != idx) {
+                    obstacles.splice(searched, 0, idx)
+                    if (obstacles.length === 1)
+                        clrObstacles.innerHTML = "Clear Obstacle"
+                    else
+                        clrObstacles.innerHTML = "Clear Obstacles"
+                }
+            }
+        }
+
+        let deleteObstacle = (idx) => {
+            if (!running) {
+                let searched = binarySearchObstacle(idx)
+
+                if (searched != -1) {
+                    obstacles.splice(searched, 1)
+                    if (obstacles.length === 1)
+                        clrObstacles.innerHTML = "Clear Obstacle"
+                    else
+                        clrObstacles.innerHTML = "Clear Obstacles"
+                }
+            }
+        }
+
+        let updateInfoStatus = () => {
+            let msg = ""
+
+            if (holdMode) {
+                msg += "Finding path"
+            } else if (holdMode) {
+                msg += "Moving viewport [Alt]"
+            } else if (removeMode) {
+                msg += "Removing obstacles"
+            } else if (dragStartTile) {
+                msg += "Moving start tile"
+            } else if (dragEndTile) {
+                msg += "Moving end tile"
+            } else {
+                msg += "Placing obstacles"
+            }
+
+            msg += "<br>"
+            msg += (obstacles.length == 1 ? "Obstacle: " : "Obstacles: ") + obstacles.length
+            msg += "<br>"
+
+            if (mouseEnter && cursorGridX + cursorGridY * 120 != -121) {
+                msg += `Current Grid: ${cursorGridX}, ${cursorGridY}, [1D]: ${cursorGridX + cursorGridY * 120}`
+            } else {
+                msg += "Current Grid: Out of bounds"
+            }
+
+            msg += "<br>"
+            msg += `Viewport: ${viewX / gridSize}, ${viewY / gridSize}`
+            msg += "<br>"
+            msg += `Canvas: ${innerWidth}, ${innerHeight - topbarSize}`
+            msg += "<br>"
+
+            info.innerHTML = msg + "AlaTomKing, 2023"
+        }
+
+        let checkElementVisibility = () => {
+            if (text.offsetLeft > btnLen) {
+                text.style.opacity = 1
+            } else {
+                text.style.opacity = 0
+            }
+
+            if (btnLen < innerWidth && btnLen < innerHeight) {
+                warn.style.pointerEvents = "none"
+                warn.style.opacity = 0
+            } else {
+                warn.style.pointerEvents = "all"
+                warn.style.opacity = 1
+            }
+        }
+
+        let changeCanvasSize = () => {
+            viewport.style.width = (innerWidth) + 'px';
+            viewport.style.height = (innerHeight - topbarSize) + 'px';
+
+            viewport.width = (innerWidth) * (devicePixelRatio * res);
+            viewport.height = (innerHeight - topbarSize) * (devicePixelRatio * res);
+
+            if (ctx) {
+                ctx.scale((devicePixelRatio * res), (devicePixelRatio * res));
+            }
+
+            updateViewportPosition()
+            updateInfoStatus()
+        }
+
+        let placeObstacle = () => {
+            if (!holdMode && mouseEnter && mouseDown && (cursorGridX != startTileX || cursorGridY != startTileY) && (cursorGridX != endTileX || cursorGridY != endTileY) && ((cursorGridX >= 0 && cursorGridY >= 0 && cursorGridX < 120 && cursorGridY < 120))) {
+                let oneD = cursorGridX + (cursorGridY * 120)
+                if (removeMode) {
+                    deleteObstacle(oneD)
+                } else {
+                    insertObstacle(oneD)
+                }
+            }
+        }
+
+        let render = () => {
+            // CLEAR CANVAS
+            ctx.clearRect(0, 0, innerWidth, innerHeight)
+
+            // BACKGROUND COLOR
+            /*ctx.fillStyle = "rgb(30, 44, 35)";
+            ctx.fillRect(0, 0, innerWidth, innerHeight)*/
+
+            // #region TILES
+
+            // OBSTACLES
+
+            let startX = Math.floor(viewX / gridSize)
+            let startY = Math.floor(viewY / gridSize)
+
+            let endX = Math.floor((viewX + innerWidth) / gridSize)
+            let endY = Math.floor((viewY + innerHeight - topbarSize) / gridSize)
+
+            let startPos = startX + startY * 120
+
+            for (i = 0; i < (endX - startX + 1) * (endY - startY + 1); i++) {
+                let pos = startPos + i % (endX - startX + 1) + Math.floor(i / (endX - startX + 1)) * 120
+
+                if (binarySearchObstacle(pos) != -1) {
+                    let x = pos % 120
+                    let y = Math.floor(pos / 120)
+
+                    ctx.fillStyle = "rgb(60,80,100)"
+                    ctx.fillRect(x * gridSize - viewX, y * gridSize - viewY, gridSize, gridSize)
+                } /*else {
+                    for (let i = 0; i < otherGrids.length; i++) {
+                        if (otherGrids[i] == pos) {
+                            let x = pos % 120
+                            let y = Math.floor(pos / 120)
+
+                            ctx.fillStyle = "rgb(50,75,60)"
+                            ctx.fillRect(x * gridSize - viewX, y * gridSize - viewY, gridSize, gridSize)
+                        }
+                    }
+                }*/
+            }
+
+            // START TILE
+            ctx.fillStyle = "rgb(0,50,150)"
+            ctx.fillRect(startTileX * gridSize - viewX, startTileY * gridSize - viewY, gridSize, gridSize)
+
+            // END TILE
+            ctx.fillStyle = "rgb(150,30,30)"
+            ctx.fillRect(endTileX * gridSize - viewX, endTileY * gridSize - viewY, gridSize, gridSize)
+
+            // #endregion
+
+            // #region MOUSE HOVER
+            if (mouseEnter && !holdMode) {
+                ctx.fillStyle = "rgba(255,255,255,0.25)"
+                ctx.fillRect(cursorGridX * gridSize - (viewX % gridSize) - Math.floor(viewX / gridSize) * gridSize, cursorGridY * gridSize - (viewY % gridSize) - Math.floor(viewY / gridSize) * gridSize, gridSize, gridSize)
+            }
+            // #endregion
+
+            // #region GRID
+            ctx.fillStyle = "rgb(10,15,20)"
+            for (x = 0; x < Math.min(innerWidth / gridSize + 1, 257); x++) {
+                ctx.fillRect((x * gridSize) - (strokeSize / 2) - (viewX % gridSize), 0, strokeSize, innerHeight)
+            }
+
+            for (y = 0; y < Math.min((innerHeight - topbarSize) / gridSize + 1, 257); y++) {
+                ctx.fillRect(0, (y * gridSize) - (strokeSize / 2) - (viewY % gridSize), innerWidth, strokeSize)
+            }
+            // #endregion
+
+            // #region OUTLINE
+
+            ctx.lineWidth = strokeSize
+            ctx.strokeStyle = "rgb(10,15,20)"
+            ctx.strokeRect(strokeSize / 2, strokeSize / 2, innerWidth - strokeSize, innerHeight - topbarSize - strokeSize)
+
+            // #endregion
+
+            // #region PATH
+
+            ctx.beginPath();
+
+            ctx.strokeStyle = "rgb(0,0,255)"
+            ctx.lineWidth = strokeSize
+
+            for (let i = 1; i < path.length; i++) {
+                let x1 = path[i] % 120
+                let y1 = Math.floor(path[i] / 120)
+
+                let x2 = path[i - 1] % 120
+                let y2 = Math.floor(path[i - 1] / 120)
+
+                ctx.moveTo(x1 * gridSize - viewX + gridSize / 2, y1 * gridSize - viewY + gridSize / 2);
+                ctx.lineTo(x2 * gridSize - viewX + gridSize / 2, y2 * gridSize - viewY + gridSize / 2);
+            }
+
+            ctx.stroke();
+
+            // #endregion
+
+            //window.requestAnimationFrame(render);
+        }
+
+        let updateViewportPosition = (deltaX = 0, deltaY = 0) => {
+            if (viewX + deltaX >= 0 && viewX + deltaX <= 120 * gridSize - innerWidth)
+                viewX += deltaX
+            else if (viewX + deltaX < 0)
+                viewX = 0
+            else
+                viewX = 120 * gridSize - innerWidth
+
+
+            if (viewY + deltaY >= 0 && viewY + deltaY <= 120 * gridSize - innerHeight - topbarSize)
+                viewY += deltaY
+            else if (viewY + deltaY < 0)
+                viewY = 0
+            else
+                viewY = 120 * gridSize - innerHeight - topbarSize
+        }
+
+        let updateMouseGrid = () => {
+            if (cursorX && cursorY && cursorY > topbarSize) {
+                let tempX = Math.floor((cursorX + (viewX % gridSize)) / gridSize + Math.floor(viewX / gridSize))
+                let tempY = Math.floor((cursorY - topbarSize + (viewY % gridSize)) / gridSize + Math.floor(viewY / gridSize))
+
+                if ((cursorGridX != tempX || cursorGridY != tempY) && (tempX >= 0 && tempY >= 0 && tempX < 120 && tempY < 120)) {
+                    cursorGridX = tempX
+                    cursorGridY = tempY
+
+                    if (dragStartTile) {
+                        if (cursorGridX != endTileX || cursorGridY != endTileY) {
+                            startTileX = cursorGridX
+                            startTileY = cursorGridY
+                        }
+                    } else if (dragEndTile) {
+                        if (cursorGridX != startTileX || cursorGridY != startTileY) {
+                            endTileX = cursorGridX
+                            endTileY = cursorGridY
+                        }
+                    } else {
+                        placeObstacle()
+                    }
+
+                    render()
+                } else if (!(tempX >= 0 && tempY >= 0 && tempX < 120 && tempY < 120)) {
+                    cursorGridX = -1
+                    cursorGridY = -1
+
+                    updateInfoStatus()
+                    render()
+                }
+            } else {
+                cursorGridX = -1
+                cursorGridY = -1
+            }
+        }
+
+        let mouseEvent = (e) => {
+            if (mouseEnter) {
+                // #region PLACING OBSTACLES
+
+                updateMouseGrid()
+
+                // #endregion
+
+                // #region DRAG START TILE
+
+                // #region DRAG MODE
+
+                if (cursorX && cursorY) {
+                    let deltaX = cursorX - e.clientX
+                    let deltaY = cursorY - e.clientY
+
+                    if (mouseDown && holdMode) {
+                        updateViewportPosition(deltaX, deltaY)
+                    }
+                    render()
+                }
+
+                cursorX = e.clientX
+                cursorY = e.clientY
+
+                // #endregion
+
+                updateInfoStatus()
+            }
+        }
+
+        let checkKey = (e) => {
+            e.preventDefault()
+            holdMode = e.altKey
+
+            updateInfoStatus()
+            render()
+        }
+
+        window.addEventListener("resize", checkElementVisibility)
+        window.addEventListener("resize", changeCanvasSize)
+        window.addEventListener("resize", render)
+        window.addEventListener("mousemove", mouseEvent)
+
+        document.addEventListener("mouseover", () => { mouseEnter = true; updateInfoStatus(); render() })
+        document.addEventListener("mouseout", () => { mouseEnter = false; updateInfoStatus(); render() })
+
+        document.addEventListener("mousedown", (e) => {
+            if (e.button === 0 && mouseEnter) {
+                mouseDown = true
+                let oneD = cursorGridX + (cursorGridY * 120)
+
+                if (cursorGridX == startTileX && cursorGridY == startTileY) {
+                    dragStartTile = true
+                } else if (cursorGridX == endTileX && cursorGridY == endTileY) {
+                    dragEndTile = true
+                } else if (binarySearchObstacle(oneD) != -1) {
+                    removeMode = true
+                    deleteObstacle(oneD)
+                } else {
+                    placeObstacle()
+                }
+
+                updateInfoStatus()
+                render()
+            }
+        })
+        document.addEventListener("mouseup", (e) => {
+            if (e.button === 0) {
+                mouseDown = false
+
+                let oneD1 = startTileX + (startTileY * 120)
+                let oneD2 = endTileX + (endTileY * 120)
+
+                deleteObstacle(oneD1)
+                deleteObstacle(oneD2)
+
+                removeMode = false
+                dragStartTile = false
+                dragEndTile = false
+                updateInfoStatus()
+                render()
+            }
+        })
+
+        document.addEventListener("wheel", (e) => {
+            e.preventDefault()
+
+            updateViewportPosition(e.deltaX, e.deltaY)
+
+            updateMouseGrid()
+            updateInfoStatus()
+            render()
+
+        }, { passive: false })
+
+        document.addEventListener("keydown", checkKey)
+        document.addEventListener("keyup", checkKey)
+
+        checkElementVisibility()
+        changeCanvasSize()
+        updateInfoStatus()
+        render()
+    </script>
+</body>
+
+</html>
